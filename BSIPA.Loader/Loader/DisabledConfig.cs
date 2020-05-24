@@ -64,7 +64,7 @@ namespace IPA.Loader
                 disableUpdateTask = disableUpdateTask.ContinueWith(t =>
                 {
                     // skip if another got here before the last finished
-                    if (referToState != updateState) return TaskEx.WhenAll();
+                    if (referToState != updateState) return Task.WhenAll();
                     else return UpdateDisabledMods(copy);
                 });
             }

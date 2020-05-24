@@ -2,7 +2,7 @@
   "$schema": "https://raw.githubusercontent.com/beat-saber-modding-group/BSIPA-MetadataFileSchema/master/Schema.json",
   "author": "DaNike",
   "description": [
-    "#![IPA.Loader.description.md]",
+    "#![BSIPA.Loader.Loader.description.md]",
     "A mod loader specifically for Beat Saber."
   ],
   "gameVersion": "1.8.0",
@@ -24,8 +24,6 @@
     "donate": "https://ko-fi.com/danike"
   },
   "files": [
-    "IPA.exe",
-    "winhttp.dll",
     "Libs/0Harmony.dll",
     "Libs/Ionic.Zip.dll",
     "Libs/Newtonsoft.Json.dll",

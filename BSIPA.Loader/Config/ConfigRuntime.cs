@@ -2,20 +2,12 @@
 using System.Collections.Generic;
 using System.Collections.Concurrent;
 using System.Linq;
-using System.Text;
 using System.Threading.Tasks;
 using System.Threading;
 using IPA.Utilities;
 using IPA.Utilities.Async;
 using System.IO;
-using System.Runtime.CompilerServices;
-using IPA.Logging;
-using UnityEngine;
 using Logger = IPA.Logging.Logger;
-#if NET4
-using Task = System.Threading.Tasks.Task;
-using TaskEx = System.Threading.Tasks.Task;
-#endif
 
 namespace IPA.Config
 {
@@ -161,7 +153,7 @@ namespace IPA.Config
             => loadFactory.StartNew(() => LoadTask(config));
 
         public static Task TriggerLoadAll()
-            => TaskEx.WhenAll(configs.Select(TriggerFileLoad));
+            => Task.WhenAll(configs.Select(TriggerFileLoad));
 
         /// <summary>
         /// this is synchronous, unlike <see cref="TriggerFileLoad(Config)"/>

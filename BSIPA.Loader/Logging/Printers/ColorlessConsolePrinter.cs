@@ -22,9 +22,7 @@ namespace IPA.Logging.Printers
         /// <param name="message">the message to print</param>
         public override void Print(Logger.Level level, DateTime time, string logName, string message)
         {
-            if (((byte)level & (byte)StandardLogger.PrintFilter) == 0) return;
-            foreach (var line in message.Split(new[] { "\n", Environment.NewLine }, StringSplitOptions.RemoveEmptyEntries))
-                Console.WriteLine(Logger.LogFormat, line, logName, time, level.ToString().ToUpper());
+
         }
     }
 }

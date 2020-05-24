@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -7,25 +6,12 @@ using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Text;
 using IPA.Config;
-using IPA.Old;
 using IPA.Utilities;
 using Mono.Cecil;
 using UnityEngine;
 using Logger = IPA.Logging.Logger;
 using System.Threading.Tasks;
 using IPA.Utilities.Async;
-#if NET4
-using TaskEx = System.Threading.Tasks.Task;
-using TaskEx6 = System.Threading.Tasks.Task;
-using Task = System.Threading.Tasks.Task;
-#endif
-#if NET3
-using Net3_Proxy;
-using Path = Net3_Proxy.Path;
-using File = Net3_Proxy.File;
-using Directory = Net3_Proxy.Directory;
-using Array = Net3_Proxy.Array;
-#endif
 
 namespace IPA.Loader
 {
@@ -82,7 +68,7 @@ namespace IPA.Loader
 
         internal static Task CommitTransaction(StateTransitionTransaction transaction)
         {
-            if (!transaction.HasStateChanged) return TaskEx.WhenAll();
+            if (!transaction.HasStateChanged) return Task.WhenAll();
 
             if (!UnityGame.OnMainThread)
             {
@@ -158,7 +144,7 @@ namespace IPA.Loader
                     }
                 }
 
-                var result = TaskEx.WhenAll();
+                var result = Task.WhenAll();
                 {
                     // then disable the mods that need to be
                     static DisableExecutor MakeDisableExec(PluginExecutor e)
@@ -192,11 +178,11 @@ namespace IPA.Loader
                         else 
                         {
                             if (exec.Executor.Metadata.RuntimeOptions != RuntimeOptions.DynamicInit)
-                                return TaskEx6.FromException(new CannotRuntimeDisableException(exec.Executor.Metadata));
+                                return Task.FromException(new CannotRuntimeDisableException(exec.Executor.Metadata));
 
-                            var res = TaskEx.WhenAll(exec.Dependents.Select(d => Disable(d, alreadyDisabled)))
+                            var res = Task.WhenAll(exec.Dependents.Select(d => Disable(d, alreadyDisabled)))
                                  .ContinueWith(t => t.IsFaulted 
-                                    ? TaskEx.WhenAll(t, TaskEx6.FromException(
+                                    ? Task.WhenAll(t, Task.FromException(
                                         new CannotRuntimeDisableException(exec.Executor.Metadata, "Dependents cannot be disabled for plugin"))) 
                                     : exec.Executor.Disable(), UnityMainThreadTaskScheduler.Default).Unwrap();
                             // We do not want to call the disable method if a dependent couldn't be disabled
@@ -207,7 +193,7 @@ namespace IPA.Loader
                     }
 
                     var disabled = new Dictionary<PluginExecutor, Task>();
-                    result = TaskEx.WhenAll(disableStructure.Select(d => Disable(d, disabled)));
+                    result = Task.WhenAll(disableStructure.Select(d => Disable(d, disabled)));
                 }
 
                 OnAnyPluginsStateChanged?.Invoke(result, toEnable, toDisable);
@@ -309,7 +295,7 @@ namespace IPA.Loader
         /// Gets a read-only dictionary of an ignored plugin to the reason it was ignored, as an <see cref="IgnoreReason"/>.
         /// </summary>
         /// <value>a dictionary of <see cref="PluginMetadata"/> to <see cref="IgnoreReason"/> of ignored plugins</value>
-        public static IReadOnlyDictionary<PluginMetadata, IgnoreReason> IgnoredPlugins => PluginLoader.ignoredPlugins;
+        public static Dictionary<PluginMetadata, IgnoreReason> IgnoredPlugins => PluginLoader.ignoredPlugins;
 
         /// <summary>
         /// An <see cref="IEnumerable{T}"/> of old IPA plugins.
@@ -469,7 +455,7 @@ namespace IPA.Loader
             catch (ReflectionTypeLoadException e)
             {
                 Logger.loader.Error($"Could not load the following types from {Path.GetFileName(file)}:");
-                Logger.loader.Error($"  {string.Join("\n  ", e.LoaderExceptions?.Select(e1 => e1?.Message).StrJP() ?? Array.Empty<string>())}");
+                Logger.loader.Error($"  {string.Join("\n  ", e.LoaderExceptions?.Select(e1 => e1?.Message).ToArray() ?? new string[0])}");
             }
             catch (Exception e)
             {

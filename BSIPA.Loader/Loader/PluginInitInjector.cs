@@ -2,18 +2,9 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
-using IPA.Config;
 using IPA.Logging;
 using IPA.Utilities;
 using System.Linq.Expressions;
-#if NET4
-using Expression = System.Linq.Expressions.Expression;
-using ExpressionEx = System.Linq.Expressions.Expression;
-#endif
-#if NET3
-using Net3_Proxy;
-#endif
-
 namespace IPA.Loader
 {
     /// <summary>
@@ -35,11 +26,11 @@ namespace IPA.Loader
     /// <description>The <see cref="PluginMetadata"/> of the plugin being injected</description>
     /// </item>
     /// <item>
-    /// <term><see cref="Config.Config"/></term>
-    /// <description>
-    /// <para>A <see cref="Config.Config"/> object for the plugin being injected.</para>
-    /// <para>
-    /// These parameters may have <see cref="Config.Config.NameAttribute"/> and <see cref="Config.Config.PreferAttribute"/> to control
+	/// <term><see cref="Config.Config"/></term>
+	/// <description>
+	/// <para>A <see cref="Config.Config"/> object for the plugin being injected.</para>
+	/// <para>
+	/// These parameters may have <see cref="Config.Config.NameAttribute"/> and <see cref="Config.Config.PreferAttribute"/> to control
     /// how it is constructed.
     /// </para>
     /// </description>
@@ -130,9 +121,9 @@ namespace IPA.Loader
         private static readonly MethodInfo InjectMethod = typeof(PluginInitInjector).GetMethod(nameof(Inject), BindingFlags.NonPublic | BindingFlags.Static);
         internal static Expression InjectedCallExpr(ParameterInfo[] initParams, Expression meta, Expression persistVar, Func<IEnumerable<Expression>, Expression> exprGen)
         {
-            var arr = ExpressionEx.Variable(typeof(object[]), "initArr");
-            return ExpressionEx.Block(new[] { arr },
-                ExpressionEx.Assign(arr, Expression.Call(InjectMethod, Expression.Constant(initParams), meta, persistVar)),
+            var arr = Expression.Variable(typeof(object[]), "initArr");
+            return Expression.Block(new[] { arr },
+                Expression.Assign(arr, Expression.Call(InjectMethod, Expression.Constant(initParams), meta, persistVar)),
                 exprGen(initParams
                             .Select(p => p.ParameterType)
                             .Select((t, i) => (Expression)Expression.Convert(
@@ -156,13 +147,13 @@ namespace IPA.Loader
 
                 var value = paramType.GetDefault();
 
-                var toUse = injectors.Select(i => (inject: i, priority: MatchPriority(paramType, i.Type)))  // check match priority, combine it
-                                     .Where(t => t.priority != null)                                        // filter null priorities
-                                     .Select(t => (t.inject, priority: t.priority.Value))                   // remove nullable
-                                     .OrderByDescending(t => t.priority)                                    // sort by value
-                                     .Select(t => t.inject);                                                // remove priority value
-
-                // this tries injectors in order of closest match by type provided 
+				var toUse = injectors.Select(i => (inject: i, priority: MatchPriority(paramType, i.Type)))  // check match priority, combine it
+									 .Where(t => t.priority != null)                                        // filter null priorities
+									 .Select(t => (t.inject, priority: t.priority.Value))                   // remove nullable
+									 .OrderByDescending(t => t.priority)                                    // sort by value
+									 .Select(t => t.inject);                                                // remove priority value
+               
+				// this tries injectors in order of closest match by type provided 
                 foreach (var pair in toUse)
                 {
                     object prev = null;

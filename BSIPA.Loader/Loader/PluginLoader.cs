@@ -10,41 +10,96 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Text.RegularExpressions;
-using System.Threading.Tasks;
+using BepInEx;
 using Version = SemVer.Version;
 using SemVer;
-#if NET4
-using Task = System.Threading.Tasks.Task;
-using TaskEx = System.Threading.Tasks.Task;
-#endif
-#if NET3
-using Net3_Proxy;
-using Path = Net3_Proxy.Path;
-using File = Net3_Proxy.File;
-using Directory = Net3_Proxy.Directory;
-#endif
 
 namespace IPA.Loader
 {
+    [BepInPlugin("com.bepinex.bsipaloader", "BSIPA Loader", "1.0")]
+    public class BSIPALoaderPlugin : BaseUnityPlugin
+	{
+		public BSIPALoaderPlugin()
+		{
+			try
+			{
+                AppDomain.CurrentDomain.AssemblyResolve += IPALoaderAssemblyResolve;
+
+                EnsureDirectories();
+                LibLoader.Configure();
+				PluginLoader.LoadTask();
+            }
+			catch (Exception ex)
+			{
+                Logger.LogFatal("Fatal error trying to load BSIPA");
+                Logger.LogFatal(ex);
+			}
+        }
+
+		private Assembly IPALoaderAssemblyResolve(object sender, ResolveEventArgs args)
+		{
+			var name = new AssemblyName(args.Name);
+
+			if (name.Name == "IPA.Loader")
+				return typeof(BSIPALoaderPlugin).Assembly;
+
+			return null;
+		}
+
+		private static void EnsureDirectories()
+		{
+			if (!Directory.Exists(UnityGame.UserDataPath))
+				Directory.CreateDirectory(UnityGame.UserDataPath);
+
+			if (!Directory.Exists(UnityGame.PluginsPath))
+				Directory.CreateDirectory(UnityGame.PluginsPath);
+
+			if (!Directory.Exists(UnityGame.NativeLibraryPath))
+				Directory.CreateDirectory(UnityGame.NativeLibraryPath);
+
+			if (!Directory.Exists(UnityGame.LibraryPath))
+				Directory.CreateDirectory(UnityGame.LibraryPath);
+		}
+
+
+    }
+
+
     /// <summary>
     /// A type to manage the loading of plugins.
     /// </summary>
 
     internal partial class PluginLoader
     {
-        internal static Task LoadTask() =>
-            TaskEx.Run(() =>
+        internal static void LoadTask()
         {
             YeetIfNeeded();
 
+			Logger.loader.Notice("Loading plugins...");
+
+			Logger.loader.Info("Loading metadata");
+
             LoadMetadata();
+
+			Logger.loader.Info("Resolving conflicts");
             Resolve();
+
+			Logger.loader.Info("Computing load order");
             ComputeLoadOrder();
+
+			Logger.loader.Info("Filtering disabled plugins");
+            DisabledConfig.Load();
             FilterDisabled();
+
+			Logger.loader.Info("Filtering plugins without files");
             FilterWithoutFiles();
 
+			Logger.loader.Notice("Resolving dependencies...");
+
             ResolveDependencies();
-        });
+
+			Logger.loader.Notice("Load complete");
+		}
 
         internal static void YeetIfNeeded()
         {
@@ -78,8 +133,8 @@ namespace IPA.Loader
             {
                 var selfMeta = new PluginMetadata
                 {
-                    Assembly = Assembly.GetExecutingAssembly(),
-                    File = new FileInfo(Path.Combine(UnityGame.InstallPath, "IPA.exe")),
+                    Assembly = typeof(PluginLoader).Assembly,
+                    File = new FileInfo(typeof(PluginLoader).Assembly.Location),
                     PluginType = null,
                     IsSelf = true
                 };
@@ -87,7 +142,7 @@ namespace IPA.Loader
                 string manifest;
                 using (var manifestReader =
                     new StreamReader(
-                        selfMeta.Assembly.GetManifestResourceStream(typeof(PluginLoader), "manifest.json") ??
+                        selfMeta.Assembly.GetManifestResourceStream("BSIPA.Loader.Loader.manifest.json") ??
                         throw new InvalidOperationException()))
                     manifest = manifestReader.ReadToEnd();
 
@@ -257,7 +312,7 @@ namespace IPA.Loader
                     if (meta.IsBare)
                     {
                         Logger.loader.Warn($"Bare manifest cannot specify description file");
-                        meta.Manifest.Description = string.Join("\n", lines.Skip(1).StrJP()); // ignore first line
+                        meta.Manifest.Description = string.Join("\n", lines.Skip(1)); // ignore first line
                         continue;
                     }
 
@@ -271,7 +326,7 @@ namespace IPA.Loader
                         if (resc == null)
                         {
                             Logger.loader.Warn($"Could not find description file for plugin {meta.Name} ({name}); ignoring include");
-                            meta.Manifest.Description = string.Join("\n", lines.Skip(1).StrJP()); // ignore first line
+                            meta.Manifest.Description = string.Join("\n", lines.Skip(1)); // ignore first line
                             continue;
                         }
 
@@ -561,9 +616,8 @@ namespace IPA.Loader
 
         internal static void ComputeLoadOrder()
         {
-#if DEBUG
-            Logger.loader.Debug(string.Join(", ", PluginsMetadata.Select(p => p.ToString()).StrJP()));
-#endif
+            foreach (var plugin in PluginsMetadata)
+				Logger.loader.Debug(plugin.ToString());
 
             static bool InsertInto(HashSet<PluginMetadata> root, PluginMetadata meta, bool isRoot = false)
             { // this is slow, and hella recursive
@@ -626,9 +680,7 @@ namespace IPA.Loader
             PluginsMetadata = new List<PluginMetadata>();
             DeTree(PluginsMetadata, pluginTree);
 
-#if DEBUG
-            Logger.loader.Debug(string.Join(", ", PluginsMetadata.Select(p => p.ToString()).StrJP()));
-#endif
+			Logger.loader.Debug(string.Join(", ", PluginsMetadata.Select(p => p.ToString())));
         }
 
         internal static void ResolveDependencies()
@@ -641,9 +693,8 @@ namespace IPA.Loader
                 var missingDeps = new List<(string id, Range version, bool disabled)>();
                 foreach (var dep in meta.Manifest.Dependencies)
                 {
-#if DEBUG
                     Logger.loader.Debug($"Looking for dependency {dep.Key} with version range {dep.Value.Intersect(new SemVer.Range("*.*.*"))}");
-#endif
+
                     if (pluginsToLoad.ContainsKey(dep.Key) && dep.Value.IsSatisfied(pluginsToLoad[dep.Key]))
                         continue;
 
@@ -669,7 +720,7 @@ namespace IPA.Loader
                 { // missing deps
                     ignoredPlugins.Add(meta, new IgnoreReason(Reason.Dependency)
                     {
-                        ReasonText = $"Missing dependencies {string.Join(", ", missingDeps.Where(t => !t.disabled).Select(t => $"{t.id}@{t.version}").StrJP())}"
+                        ReasonText = $"Missing dependencies {string.Join(", ", missingDeps.Where(t => !t.disabled).Select(t => $"{t.id}@{t.version}").ToArray())}"
                     });
                 }
                 else
@@ -683,48 +734,48 @@ namespace IPA.Loader
             PluginsMetadata = metadata;
         }
 
-        internal static void InitFeatures()
-        {
-            var parsedFeatures = PluginsMetadata.Select(m =>
-                    (metadata: m,
-                     features: m.Manifest.Features.Select(feature => 
-                            (feature, parsed: Ref.Create<Feature.FeatureParse?>(null))
-                        ).ToList()
-                    )
-                ).ToList();
+		internal static void InitFeatures()
+		{
+			var parsedFeatures = PluginsMetadata.Select(m =>
+				(metadata: m,
+					features: m.Manifest.Features.Select(feature =>
+						(feature, parsed: Ref.Create<Feature.FeatureParse?>(null))
+					).ToList()
+				)
+			).ToList();
 
-            while (DefineFeature.NewFeature)
-            {
-                DefineFeature.NewFeature = false;
+			while (DefineFeature.NewFeature)
+			{
+				DefineFeature.NewFeature = false;
 
-                foreach (var (metadata, features) in parsedFeatures)
-                    for (var i = 0; i < features.Count; i++)
-                    {
-                        var feature = features[i];
+				foreach (var (metadata, features) in parsedFeatures)
+					for (var i = 0; i < features.Count; i++)
+					{
+						var feature = features[i];
 
-                        var success = Feature.TryParseFeature(feature.feature, metadata, out var featureObj,
-                            out var exception, out var valid, out var parsed, feature.parsed.Value);
+						var success = Feature.TryParseFeature(feature.feature, metadata, out var featureObj,
+							out var exception, out var valid, out var parsed, feature.parsed.Value);
 
-                        if (!success && !valid && featureObj == null && exception == null) // no feature of type found
-                            feature.parsed.Value = parsed;
-                        else if (success)
-                        {
-                            if (valid && featureObj.StoreOnPlugin)
-                                metadata.InternalFeatures.Add(featureObj);
-                            else if (!valid)
-                                Logger.features.Warn(
-                                    $"Feature not valid on {metadata.Name}: {featureObj.InvalidMessage}");
-                            features.RemoveAt(i--);
-                        }
-                        else
-                        {
-                            Logger.features.Error($"Error parsing feature definition on {metadata.Name}");
-                            Logger.features.Error(exception);
-                            features.RemoveAt(i--);
-                        }
-                    }
+						if (!success && !valid && featureObj == null && exception == null) // no feature of type found
+							feature.parsed.Value = parsed;
+						else if (success)
+						{
+							if (valid && featureObj.StoreOnPlugin)
+								metadata.InternalFeatures.Add(featureObj);
+							else if (!valid)
+								Logger.features.Warn(
+									$"Feature not valid on {metadata.Name}: {featureObj.InvalidMessage}");
+							features.RemoveAt(i--);
+						}
+						else
+						{
+							Logger.features.Error($"Error parsing feature definition on {metadata.Name}");
+							Logger.features.Error(exception);
+							features.RemoveAt(i--);
+						}
+					}
 
-                foreach (var plugin in PluginsMetadata)
+				foreach (var plugin in PluginsMetadata)
                     foreach (var feature in plugin.Features)
                         feature.Evaluate();
             }

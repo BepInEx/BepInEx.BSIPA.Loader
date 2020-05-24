@@ -5,19 +5,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using System.Linq.Expressions;
-#if NET4
-using Task = System.Threading.Tasks.Task;
-using TaskEx = System.Threading.Tasks.Task;
-using Expression = System.Linq.Expressions.Expression;
-using ExpressionEx = System.Linq.Expressions.Expression;
-#endif
-#if NET3
 using System.Threading.Tasks;
-using Net3_Proxy;
-using Path = Net3_Proxy.Path;
-using File = Net3_Proxy.File;
-using Directory = Net3_Proxy.Directory;
-#endif
 
 namespace IPA.Loader
 {
@@ -39,7 +27,7 @@ namespace IPA.Loader
             {
                 CreatePlugin = m => null;
                 LifecycleEnable = o => { };
-                LifecycleDisable = o => TaskEx.WhenAll();
+                LifecycleDisable = o => Task.WhenAll();
             }
             else
                 PrepareDelegates();
@@ -74,11 +62,11 @@ namespace IPA.Loader
 
         private static Func<PluginMetadata, object> MakeCreateFunc(Type type, string name)
         { // TODO: what do i want the visibiliy of Init methods to be?
-            var ctors = type.GetConstructors(BindingFlags.Public | BindingFlags.Instance)
-                            .Select(c => (c, attr: c.GetCustomAttribute<InitAttribute>()))
-                            .NonNull(t => t.attr)
-                            .OrderByDescending(t => t.c.GetParameters().Length)
-                            .Select(t => t.c).ToArray();
+			var ctors = type.GetConstructors(BindingFlags.Public | BindingFlags.Instance)
+							.Select(c => (c, attr: c.GetCustomAttribute<InitAttribute>()))
+							.NonNull(t => t.attr)
+							.OrderByDescending(t => t.c.GetParameters().Length)
+							.Select(t => t.c).ToArray();
             if (ctors.Length > 1)
                 Logger.loader.Warn($"Plugin {name} has multiple [Init] constructors. Picking the one with the most parameters.");
 
@@ -93,8 +81,8 @@ namespace IPA.Loader
             }
 
             var initMethods = type.GetMethods(BindingFlags.Public | BindingFlags.Instance)
-                                .Select(m => (m, attr: m.GetCustomAttribute<InitAttribute>()))
-                                .NonNull(t => t.attr).Select(t => t.m).ToArray();
+								  .Select(m => (m, attr: m.GetCustomAttribute<InitAttribute>()))
+								  .NonNull(t => t.attr).Select(t => t.m).ToArray();
             // verify that they don't have lifecycle attributes on them
             foreach (var method in initMethods)
             {
@@ -104,13 +92,13 @@ namespace IPA.Loader
             }
 
             var metaParam = Expression.Parameter(typeof(PluginMetadata), "meta");
-            var objVar = ExpressionEx.Variable(type, "objVar");
-            var persistVar = ExpressionEx.Variable(typeof(object), "persistVar");
+            var objVar = Expression.Variable(type, "objVar");
+            var persistVar = Expression.Variable(typeof(object), "persistVar");
             var createExpr = Expression.Lambda<Func<PluginMetadata, object>>(
-                ExpressionEx.Block(new[] { objVar, persistVar },
+                Expression.Block(new[] { objVar, persistVar },
                     initMethods
                         .Select(m => PluginInitInjector.InjectedCallExpr(m.GetParameters(), metaParam, persistVar, es => Expression.Call(objVar, m, es)))
-                        .Prepend(ExpressionEx.Assign(objVar,
+                        .Prepend(Expression.Assign(objVar,
                             usingDefaultCtor
                                 ? Expression.New(ctor)
                                 : PluginInitInjector.InjectedCallExpr(ctor.GetParameters(), metaParam, persistVar, es => Expression.New(ctor, es))))
@@ -123,10 +111,10 @@ namespace IPA.Loader
         private static Action<object> MakeLifecycleEnableFunc(Type type, string name)
         {
             var enableMethods = type.GetMethods(BindingFlags.Public | BindingFlags.Instance)
-                                    .Select(m => (m, attrs: m.GetCustomAttributes(typeof(IEdgeLifecycleAttribute), false)))
-                                    .Select(t => (t.m, attrs: t.attrs.Cast<IEdgeLifecycleAttribute>()))
-                                    .Where(t => t.attrs.Any(a => a.Type == EdgeLifecycleType.Enable))
-                                    .Select(t => t.m).ToArray();
+									.Select(m => (m, attrs: m.GetCustomAttributes(typeof(IEdgeLifecycleAttribute), false)))
+									.Select(t => (t.m, attrs: t.attrs.Cast<IEdgeLifecycleAttribute>()))
+									.Where(t => t.attrs.Any(a => a.Type == EdgeLifecycleType.Enable))
+									.Select(t => t.m).ToArray();
             if (enableMethods.Length == 0)
             {
                 Logger.loader.Notice($"Plugin {name} has no methods marked [OnStart] or [OnEnable]. Is this intentional?");
@@ -142,26 +130,25 @@ namespace IPA.Loader
             }
 
             var objParam = Expression.Parameter(typeof(object), "obj");
-            var instVar = ExpressionEx.Variable(type, "inst");
+            var instVar = Expression.Variable(type, "inst");
             var createExpr = Expression.Lambda<Action<object>>(
-                ExpressionEx.Block(new[] { instVar },
+                Expression.Block(new[] { instVar },
                     enableMethods
                         .Select(m => (Expression)Expression.Call(instVar, m))
-                        .Prepend(ExpressionEx.Assign(instVar, Expression.Convert(objParam, type)))),
+                        .Prepend(Expression.Assign(instVar, Expression.Convert(objParam, type)))),
                 objParam);
             return createExpr.Compile();
         }
         private static Func<object, Task> MakeLifecycleDisableFunc(Type type, string name)
-        {
-            var disableMethods = type.GetMethods(BindingFlags.Public | BindingFlags.Instance)
-                                    .Select(m => (m, attrs: m.GetCustomAttributes(typeof(IEdgeLifecycleAttribute), false)))
-                                    .Select(t => (t.m, attrs: t.attrs.Cast<IEdgeLifecycleAttribute>()))
-                                    .Where(t => t.attrs.Any(a => a.Type == EdgeLifecycleType.Disable))
-                                    .Select(t => t.m).ToArray();
+		{
+			var disableMethods = type.GetMethods(BindingFlags.Public | BindingFlags.Instance)
+									 .Select(m => new Tuple<MethodInfo, IEnumerable<IEdgeLifecycleAttribute>>(m, m.GetCustomAttributes(typeof(IEdgeLifecycleAttribute), false).Cast<IEdgeLifecycleAttribute>()))
+									 .Where(t => t.Item2.Any(a => a.Type == EdgeLifecycleType.Disable))
+									 .Select(t => t.Item1).ToArray();
             if (disableMethods.Length == 0)
             {
                 Logger.loader.Notice($"Plugin {name} has no methods marked [OnExit] or [OnDisable]. Is this intentional?");
-                return o => TaskEx.WhenAll();
+                return o => Task.WhenAll();
             }
 
             var taskMethods = new List<MethodInfo>();
@@ -184,17 +171,17 @@ namespace IPA.Loader
                 nonTaskMethods.Add(m);
             }
 
-            Expression<Func<Task>> completedTaskDel = () => TaskEx.WhenAll();
+            Expression<Func<Task>> completedTaskDel = () => Task.WhenAll();
             var getCompletedTask = completedTaskDel.Body;
-            var taskWhenAll = typeof(TaskEx).GetMethod(nameof(TaskEx.WhenAll), new[] { typeof(Task[]) });
+            var taskWhenAll = typeof(Task).GetMethod(nameof(Task.WhenAll), new[] { typeof(Task[]) });
 
             var objParam = Expression.Parameter(typeof(object), "obj");
-            var instVar = ExpressionEx.Variable(type, "inst");
+            var instVar = Expression.Variable(type, "inst");
             var createExpr = Expression.Lambda<Func<object, Task>>(
-                ExpressionEx.Block(new[] { instVar },
+                Expression.Block(new[] { instVar },
                     nonTaskMethods
                         .Select(m => (Expression)Expression.Call(instVar, m))
-                        .Prepend(ExpressionEx.Assign(instVar, Expression.Convert(objParam, type)))
+                        .Prepend(Expression.Assign(instVar, Expression.Convert(objParam, type)))
                         .Append(
                             taskMethods.Count == 0 
                                 ? getCompletedTask

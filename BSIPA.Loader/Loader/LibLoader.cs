@@ -1,20 +1,10 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.ComponentModel;
-using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Reflection;
-using System.Runtime.InteropServices;
-using System.Linq;
 using IPA.Logging;
 using IPA.Utilities;
 using Mono.Cecil;
-#if NET3
-using Net3_Proxy;
-using Directory = Net3_Proxy.Directory;
-using Path = Net3_Proxy.Path;
-using File = Net3_Proxy.File;
-#endif
 
 namespace IPA.Loader
 {
@@ -27,8 +17,10 @@ namespace IPA.Loader
         {
             LibLoader.SetupAssemblyFilenames();
 
-            if (name.Name == CurrentAssemblyName)
+			if (name.Name == CurrentAssemblyName || name.Name == "IPA.Loader")
+			{
                 return AssemblyDefinition.ReadAssembly(CurrentAssemblyPath, parameters);
+			}
 
             if (LibLoader.FilenameLocations.TryGetValue($"{name.Name}.dll", out var path))
             {
@@ -48,8 +40,8 @@ namespace IPA.Loader
 
     internal static class LibLoader
     {
-        internal static string LibraryPath => Path.Combine(Environment.CurrentDirectory, "Libs");
-        internal static string NativeLibraryPath => Path.Combine(LibraryPath, "Native");
+        internal static string LibraryPath => UnityGame.LibraryPath;
+        internal static string NativeLibraryPath => UnityGame.NativeLibraryPath;
         internal static Dictionary<string, string> FilenameLocations;
 
         internal static void Configure()
@@ -69,42 +61,6 @@ namespace IPA.Loader
                     if (FilenameLocations.ContainsKey(fn.Name))
                         Log(Logger.Level.Critical, $"Multiple instances of {fn.Name} exist in Libs! Ignoring {fn.FullName}");
                     else FilenameLocations.Add(fn.Name, fn.FullName);
-
-
-                if (!SetDefaultDllDirectories(LoadLibraryFlags.LOAD_LIBRARY_SEARCH_USER_DIRS | LoadLibraryFlags.LOAD_LIBRARY_SEARCH_SYSTEM32
-                                            | LoadLibraryFlags.LOAD_LIBRARY_SEARCH_DEFAULT_DIRS | LoadLibraryFlags.LOAD_LIBRARY_SEARCH_APPLICATION_DIR))
-                {
-                    var err = new Win32Exception();
-                    Log(Logger.Level.Critical, $"Error configuring DLL search path");
-                    Log(Logger.Level.Critical, err);
-                    return;
-                }
-
-                static void AddDir(string path)
-                {
-                    var retPtr = AddDllDirectory(path);
-                    if (retPtr == IntPtr.Zero)
-                    {
-                        var err = new Win32Exception();
-                        Log(Logger.Level.Warning, $"Could not add DLL directory {path}");
-                        Log(Logger.Level.Warning, err);
-                    }
-                }
-
-                if (Directory.Exists(NativeLibraryPath))
-                {
-                    AddDir(NativeLibraryPath);
-                    TraverseTree(NativeLibraryPath, dir =>
-                    { // this is a terrible hack for iterating directories
-                        AddDir(dir); return true;
-                    }).All(f => true); // force it to iterate all
-                }
-
-                //var unityData = Directory.EnumerateDirectories(Environment.CurrentDirectory, "*_Data").First();
-                //AddDir(Path.Combine(unityData, "Plugins"));
-
-                foreach (var dir in Environment.GetEnvironmentVariable("path").Split(Path.PathSeparator))
-                    AddDir(dir);
             }
         }
 
@@ -122,6 +78,12 @@ namespace IPA.Loader
 
             var testFile = $"{asmName.Name}.dll";
             Log(Logger.Level.Debug, $"Looking for file {asmName.Name}.dll");
+
+			if (asmName.Name == "IPA.Loader")
+			{
+				Log(Logger.Level.Debug, "Resolved to self");
+                return typeof(BSIPALoaderPlugin).Assembly;
+			}
 
             if (FilenameLocations.TryGetValue(testFile, out var path))
             {
@@ -217,23 +179,5 @@ namespace IPA.Loader
                 }
             }
         }
-
-        [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
-        private static extern IntPtr AddDllDirectory(string lpPathName);
-
-        [Flags]
-        [SuppressMessage("ReSharper", "InconsistentNaming")]
-        [SuppressMessage("ReSharper", "UnusedMember.Local")]
-        private enum LoadLibraryFlags : uint
-        {
-            None = 0,
-            LOAD_LIBRARY_SEARCH_APPLICATION_DIR = 0x00000200,
-            LOAD_LIBRARY_SEARCH_DEFAULT_DIRS = 0x00001000,
-            LOAD_LIBRARY_SEARCH_SYSTEM32 = 0x00000800,
-            LOAD_LIBRARY_SEARCH_USER_DIRS = 0x00000400,
-        }
-
-        [DllImport("kernel32.dll", SetLastError = true)]
-        private static extern bool SetDefaultDllDirectories(LoadLibraryFlags dwFlags);
     }
 }

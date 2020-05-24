@@ -3,6 +3,7 @@ using System;
 using System.IO;
 using System.Reflection;
 using System.Threading;
+using BepInEx;
 using UnityEngine;
 #if NET3
 using Path = Net3_Proxy.Path;
@@ -95,20 +96,13 @@ namespace IPA.Utilities
         public static Release ReleaseType => (_releaseCache ?? (_releaseCache = CheckIsSteam() ? Release.Steam : Release.Other)).Value;
 
         private static string _installRoot;
-        /// <summary>
-        /// Gets the path to the game's install directory.
-        /// </summary>
-        /// <value>the path of the game install directory</value>
-        public static string InstallPath
-        {
-            get
-            {
-                if (_installRoot == null)
-                    _installRoot = Path.GetFullPath(
-                        Path.Combine(Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location), "..", ".."));
-                return _installRoot;
-            }
-        }
+
+		/// <summary>
+		/// Gets the path to the game's install directory.
+		/// </summary>
+		/// <value>the path of the game install directory</value>
+		public static string InstallPath => Paths.GameRootPath;
+
         /// <summary>
         /// The path to the `Libs` folder. Use only if necessary.
         /// </summary>

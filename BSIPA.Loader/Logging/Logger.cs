@@ -16,26 +16,13 @@ namespace IPA.Logging
             get
             {
                 if (_log == null)
-                    _log = new StandardLogger("IPA");
+                    _log = new StandardLogger("BSIPA");
                 return _log;
-            }
-        }
-
-        private static StandardLogger _stdout;
-
-        internal static StandardLogger stdout
-        {
-            get
-            {
-                if (_stdout == null)
-                    _stdout = new StandardLogger("_");
-                return _stdout;
             }
         }
 
         internal static Logger updater => log.GetChildLogger("Updater");
         internal static Logger libLoader => log.GetChildLogger("LibraryLoader");
-        internal static Logger injector => log.GetChildLogger("Injector");
         internal static Logger loader => log.GetChildLogger("Loader");
         internal static Logger features => loader.GetChildLogger("Features");
         internal static Logger config => log.GetChildLogger("Config");
