@@ -30,3 +30,9 @@ Please note that *no* game .dll files are included in this repository.
 2. Build
 
 Build artifacts will be located in the `/bin` directory
+
+### Licenses / Credits
+
+BepInEx.BSIPAVirtualizer is a modified version of BepInEx.IPAVirtualizer from [IPALoaderX](https://github.com/BepInEx/IPALoaderX), which is under the MIT license.
+
+BSIPA.Loader is a modified version of the IPA.Loader project from BSIPA (link pending), which is under the MIT license.
